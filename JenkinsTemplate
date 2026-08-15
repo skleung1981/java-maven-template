@@ -1,0 +1,45 @@
+//Please rename the file to Jenkinsfile in order to run it in the Jenkins 
+pipeline {
+    tools {
+        maven 'DEFAULT_MAVEN'
+    }
+    agent any
+    stages {
+        stage('Run Unit Test') {
+            steps {
+                echo 'Running Unit Test'
+                withMaven(mavenSettingsConfig: 'forgejo-myskl', mavenLocalRepo: '/var/jenkins_home/') {
+                    sh 'mvn clean test'
+                }
+            }
+        }
+        stage('Build & Deploy （SNAPSHOT）') {
+            when {
+                anyOf {
+                    branch 'main'
+                    not { tag '*' }
+                }
+            }
+            steps {
+                echo 'Deploying SNAPSHOT to Nexus...'
+                withMaven(mavenSettingsConfig: 'forgejo-myskl', mavenLocalRepo: '/var/jenkins_home/') {
+                    sh 'mvn clean deploy -DskipTests'
+                }
+            }
+        }
+        stage('Build & Deploy （Release Tag）') {
+            when {
+                anyOf {
+                    tag '*'
+                }
+            }
+            steps {
+                echo 'Deploying Release Tag: ${env.TAG_NAME} to Nexus...'
+                withMaven(mavenSettingsConfig: 'forgejo-myskl', mavenLocalRepo: '/var/jenkins_home/') {
+                    sh "mvn versions:set -DnewVersion=${env.TAG_NAME}"
+                    sh 'mvn clean deploy -DskipTests'
+                }
+            }
+        }
+    }
+}
