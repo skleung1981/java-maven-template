@@ -9,7 +9,9 @@
     </parent>
 
     <!-- The Basics -->
+    <!-- TODO You should update the artifactId -->
     <artifactId>java-maven-template</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
 
     <properties>
 
