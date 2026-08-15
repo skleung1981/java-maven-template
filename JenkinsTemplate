@@ -1,4 +1,4 @@
-//Please rename the file to Jenkinsfile in order to run it in the Jenkins 
+//Please rename the file to Jenkinsfile in order to run it in the Jenkins
 pipeline {
     tools {
         maven 'DEFAULT_MAVEN'
@@ -13,7 +13,7 @@ pipeline {
                 }
             }
         }
-        stage('Build & Deploy （SNAPSHOT）') {
+        stage('Build & Deploy (SNAPSHOT)') {
             when {
                 anyOf {
                     branch 'main'
@@ -27,7 +27,7 @@ pipeline {
                 }
             }
         }
-        stage('Build & Deploy （Release Tag）') {
+        stage('Build & Deploy (Release Tag)') {
             when {
                 anyOf {
                     tag '*'
