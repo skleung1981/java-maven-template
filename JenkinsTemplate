@@ -2,6 +2,7 @@
 pipeline {
     tools {
         maven 'DEFAULT_MAVEN'
+        dockerTool 'DEFAULT_DOCKER'
     }
     agent any
     stages {
@@ -13,11 +14,11 @@ pipeline {
                 }
             }
         }
-        stage('Build & Deploy (SNAPSHOT)') {
+        stage('Build & Deploy （SNAPSHOT）') {
             when {
-                anyOf {
+                allOf {
                     branch 'main'
-                    not { tag '*' }
+                    not { buildingTag() }
                 }
             }
             steps {
@@ -27,17 +28,58 @@ pipeline {
                 }
             }
         }
-        stage('Build & Deploy (Release Tag)') {
+        stage('Build & Deploy （Release Tag）') {
             when {
-                anyOf {
-                    tag '*'
+                buildingTag()
+            }
+            steps {
+                echo "Deploying Release Tag: ${env.TAG_NAME} to Nexus..."
+                script {
+                    def rawTag = env.TAG_NAME ?: env.BRANCH_NAME
+                    def cleanVersion = rawTag.replaceAll(/^v/, '')
+
+                    withMaven(mavenSettingsConfig: 'forgejo-myskl', mavenLocalRepo: '/var/jenkins_home/') {
+                        sh "mvn versions:set -DnewVersion=${cleanVersion}"
+                        sh 'mvn clean deploy -DskipTests'
+                    }
+                }
+
+            }
+        }
+        stage('Dockerize (Only on Tag)') {
+            when {
+                allOf {
+                    buildingTag()
+                    expression { fileExists 'Dockerfile' }
                 }
             }
             steps {
-                echo 'Deploying Release Tag: ${env.TAG_NAME} to Nexus...'
-                withMaven(mavenSettingsConfig: 'forgejo-myskl', mavenLocalRepo: '/var/jenkins_home/') {
-                    sh "mvn versions:set -DnewVersion=${env.TAG_NAME}"
-                    sh 'mvn clean deploy -DskipTests'
+                script{
+                    def imageName = "java_maven_template"
+                    def gitTag = env.TAG_NAME ?: env.BRANCH_NAME
+                    def cleanVersion = gitTag.replaceAll(/^v/, '')
+                    def registry = "saturn:30088"
+                    def fullImageName = "${registry}/${imageName}"
+                    def imageTag = "${fullImageName}:${cleanVersion}"
+                    def latestTag = "${fullImageName}:latest"
+
+                    withCredentials([usernamePassword(credentialsId: 'nexus-cicd-admin',
+                                             usernameVariable: 'nexus_user',
+                                             passwordVariable: 'nexus_password')]) {
+                        // 1. Build (Always assumed there is Dockerfile?)
+                        sh "docker build -t ${imageTag} ."
+
+                        sh '''
+                            mkdir -p "${WORKSPACE}/.docker-config"
+                            export DOCKER_CONFIG="${WORKSPACE}/.docker-config"
+                            echo "$nexus_password" | docker login ''' + registry + ''' -u "$nexus_user" --password-stdin
+                            docker push ''' + imageTag + '''
+                            docker tag ''' + imageTag + ' ' + latestTag + '''
+                            docker push ''' + latestTag + '''
+                            rm -rf "${WORKSPACE}/.docker-config"
+                            docker rmi ''' + imageTag + ' ' + latestTag + ''' || true
+                        '''
+                    }
                 }
             }
         }
